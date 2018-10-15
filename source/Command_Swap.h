@@ -3,7 +3,6 @@
 #include "c4d.h"
 
 #include "instance_functions.h"
-#include "c4d_helpers.h"
 
 class Command_Swap : public CommandData
 {
@@ -33,7 +32,7 @@ public:
 			const auto dataBc = bc->GetContainerInstance(PID_IM);
 			if (dataBc)
 			{
-				const auto link = dataBc->GetObjectLink(0, doc);
+				const auto link = dataBc->GetObjectLink(SWAPTARGET, doc);
 				if (link) return CMD_ENABLED;
 			}
 		}
@@ -65,7 +64,7 @@ public:
 			{
 				const auto dataBc = bc->GetContainerInstance(PID_IM);
 				if (dataBc)
-					swapTarget = dataBc->GetObjectLink(0, doc);
+					swapTarget = dataBc->GetObjectLink(SWAPTARGET, doc);
 			}
 		}
 
@@ -133,7 +132,7 @@ public:
 			BaseContainer dataBc;
 			if (targetBc)
 			{
-				dataBc.SetLink(0, obj);
+				dataBc.SetLink(SWAPTARGET, obj);
 				targetBc->SetContainer(PID_IM, dataBc);
 			}
 		}
@@ -144,7 +143,7 @@ public:
 			BaseContainer dataBc;
 			if (targetBc)
 			{
-				dataBc.SetLink(0, nullptr);
+				dataBc.SetLink(SWAPTARGET, nullptr);
 				targetBc->SetContainer(PID_IM, dataBc);
 			}
 		}

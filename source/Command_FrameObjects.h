@@ -43,9 +43,18 @@ public:
 			const auto obj = static_cast<BaseObject*>(activeObjects->GetIndex(i));
 			if (obj->GetType() == Oinstance)
 			{
+				auto bc = obj->GetDataInstance();
+				if(!bc)
+					continue;
+
+				BaseContainer dataBc;
+
 				// Save the current instance mode and set it to normal instances
 				obj->GetParameter(DescID(INSTANCEOBJECT_RENDERINSTANCE_MODE), data, DESCFLAGS_GET::NONE);
+				dataBc.SetInt32(INSTANCEMODE, data.GetInt32());
+
 				obj->SetParameter(DescID(INSTANCEOBJECT_RENDERINSTANCE_MODE), GeData(INSTANCEOBJECT_RENDERINSTANCE_MODE_NONE), DESCFLAGS_SET::NONE);
+				bc->SetContainer(PID_IM, dataBc);
 			}
 		}
 
@@ -58,7 +67,16 @@ public:
 			const auto obj = static_cast<BaseObject*>(activeObjects->GetIndex(i));
 			if (obj->GetType() == Oinstance)
 			{
-				obj->SetParameter(DescID(INSTANCEOBJECT_RENDERINSTANCE_MODE), data.GetInt32(), DESCFLAGS_SET::NONE);
+				auto bc = obj->GetDataInstance();
+				if(!bc)
+					continue;
+
+				const auto dataBc = bc->GetContainerInstance(PID_IM);
+				if(!dataBc)
+					continue;
+
+
+				obj->SetParameter(DescID(INSTANCEOBJECT_RENDERINSTANCE_MODE), dataBc->GetInt32(INSTANCEMODE), DESCFLAGS_SET::NONE);
 			}
 		}
 

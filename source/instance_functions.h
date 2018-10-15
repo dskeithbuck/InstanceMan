@@ -65,7 +65,7 @@ inline BaseObject* g_CreateInstance(BaseObject* refObj)
 	auto instanceMode = 0;
 	const auto bc = GetWorldPluginData(PID_IM);
 	if (bc)
-		instanceMode = bc->GetInt32(INSTANCEMODE, 0);
+		instanceMode = bc->GetInt32(DEFAULT_INSTANCEMODE, 0);
 
 
 	// Set Name to the same as the reference object

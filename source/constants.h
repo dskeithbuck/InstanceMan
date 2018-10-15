@@ -51,7 +51,12 @@ static const Int32 PID_IM_SEPARATOR = 1050106;
 static const char* PNAME_IM_SEPARATOR = "#$09--";
 
 // Settings IDs
-static const Int32 INSTANCEMODE = 0;
+enum INSTANCEMANIDS : Int32
+{
+	DEFAULT_INSTANCEMODE = 0,
+	INSTANCEMODE,
+	SWAPTARGET,
+};
 
 // Cinema 4D Commands
 #define COMMAND_FRAMEOBJECTS 12151

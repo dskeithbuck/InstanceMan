@@ -61,7 +61,7 @@ public:
 		// Get the active instance mode from plugin settings
 		const auto bc = GetWorldPluginData(PID_IM);
 		if (bc)
-			return bc->GetInt32(0);
+			return bc->GetInt32(DEFAULT_INSTANCEMODE);
 		return 0;
 	}
 
@@ -71,7 +71,7 @@ private:
 		// Read the plugin settings and set the active instance mode
 		BaseContainer bc;
 		GetInt32(IDS_INSTANCEMODE, _activeInstanceMode);
-		bc.SetInt32(0, _activeInstanceMode);
+		bc.SetInt32(DEFAULT_INSTANCEMODE, _activeInstanceMode);
 		SetWorldPluginData(PID_IM, bc, false);
 	}
 
