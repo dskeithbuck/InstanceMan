@@ -1,68 +1,104 @@
 ﻿#pragma once
+
 #include "c4d.h"
 
 #include "c4d_helpers.h"
+#include "instance_functions.h"
+
 
 class Command_Select : public CommandData
 {
+INSTANCEOF(Command_Select, CommandData)
+
 public:
+	static maxon::Result<Command_Select*> Alloc()
+	{
+		iferr_scope;
+		return NewObj(Command_Select) iferr_return;
+	}
+
+	Int32 GetState(BaseDocument* doc) override
+	{
+		// Disable Menu entry if no object is selected
+		const AutoAlloc<AtomArray> arr;
+		doc->GetActiveObjects(arr, GETACTIVEOBJECTFLAGS::NONE);
+		if (!arr || arr->GetCount() == 0)
+			return 0;
+		return CMD_ENABLED;
+	}
+
 	Bool Execute(BaseDocument* doc) override
 	{
 		if (!doc)
 			return false;
 
-		// Create Array that holds all objects to operate on; respects order of selection
+		doc->StartUndo();
+
+		// Create Array that holds all objects to operate on
 		const AutoAlloc<AtomArray> activeObjects;
 		doc->GetActiveObjectsFilter(*activeObjects, false, NOTOK, Obase);
 
 
-		// No object selected, no function
-		if (activeObjects == nullptr)
+		// Allocation failed
+		if (!activeObjects)
 			return false;
 
+		// Detect Key modifiers#
+		BaseContainer state;
+		GetInputState(BFM_INPUT_KEYBOARD, BFM_INPUT_MODIFIERS, state);
+		const auto bShift = (state.GetInt32(BFM_INPUT_QUALIFIER) & QSHIFT) != 0;
+		const auto bCtrl = (state.GetInt32(BFM_INPUT_QUALIFIER) & QCTRL) != 0;
+
+		// Unselect all objects
+		rh::g_DeselectAllObjects(doc);
 
 		// Iterate through all selected objects
 		for (auto i = 0; i < activeObjects->GetCount(); ++i)
 		{
-			const auto atom = activeObjects->GetIndex(i);
+			const auto obj = static_cast<BaseObject*>(activeObjects->GetIndex(i));
 
 			// No object was selected
-			if (atom == nullptr)
-				return false;
-
-			// Treat atom as BaseList2D
-			auto obj = static_cast<BaseList2D*>(atom);
+			if (!doc)
+				continue;
 
 
-			BaseList2D* root = rh::getInstanceRoot(obj);
-
-			if (root)
-				ApplicationOutput(root->GetName());
-
-
-			// Currently processing an instance?
-			// get the linked object from it
-			if (obj->GetType() == Oinstance)
+			// Currently processing an BaseObject?
+			if (obj->IsInstanceOf(Obase))
 			{
-				GeData data;
-				atom->GetParameter(INSTANCEOBJECT_LINK, data, DESCFLAGS_GET::NONE);
-
-				// Get the linked object
-				C4DAtomGoal* goal = data.GetLinkAtom(doc);
-				if (!goal)
-					return false;
+				// Retrieve the referenced object in the first instance selected and select all corresponding instances
+				auto referenceObject = obj->IsInstanceOf(Oinstance) ? g_GetInstanceRef(obj, bCtrl) : obj; // Alternativley user getInstanceRefDeep
+				auto currentObject = doc->GetFirstObject();
 
 
-				// TODO: Get the true reference and all Baselinks and select the linked objects
+				// Iterate through all objects in the document
+				while (currentObject)
+				{
+					if (currentObject->IsInstanceOf(Oinstance))
+					{
+						// Get linked object
+						const auto linkedObj = g_GetInstanceRef(currentObject, bCtrl);
+
+						if (linkedObj && linkedObj == referenceObject)
+						{
+							// Select reference object if Shift is held down
+							if (bShift)
+							{
+								doc->AddUndo(UNDOTYPE::BITS, referenceObject);
+								referenceObject->SetBit(BIT_ACTIVE);
+							}
+
+							doc->AddUndo(UNDOTYPE::BITS, currentObject);
+							currentObject->SetBit(BIT_ACTIVE);
+						}
+					}
+					currentObject = static_cast<BaseObject*>(rh::g_GetNextElement(static_cast<GeListNode*>(currentObject)));
+				}
 			}
 		}
 
+		EventAdd();
 
+		doc->EndUndo();
 		return true;
-	}
-
-	static Command_Select* Alloc()
-	{
-		return NewObjClear(Command_Select);
 	}
 };

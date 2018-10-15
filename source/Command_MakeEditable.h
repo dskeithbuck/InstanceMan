@@ -3,14 +3,32 @@
 
 #include "instance_functions.h"
 
+
 class Command_MakeEditable : public CommandData
 {
 INSTANCEOF(Command_MakeEditable, CommandData)
 
 public:
-	static Command_MakeEditable* Alloc()
+	static maxon::Result<Command_MakeEditable*> Alloc()
 	{
-		return NewObjClear(Command_MakeEditable);
+		iferr_scope;
+		return NewObj(Command_MakeEditable) iferr_return;
+	}
+
+	Int32 GetState(BaseDocument* doc) override
+	{
+		// Disable Menu entry if no object is selected
+		const AutoAlloc<AtomArray> arr;
+		doc->GetActiveObjects(arr, GETACTIVEOBJECTFLAGS::CHILDREN);
+		if (!arr || arr->GetCount() == 0)
+			return 0;
+
+		for (auto i = 0; i < arr->GetCount(); ++i)
+		{
+			if (static_cast<BaseObject*>(arr->GetIndex(i))->IsInstanceOf(Oinstance))
+				return CMD_ENABLED;
+		}
+		return 0;
 	}
 
 	Bool Execute(BaseDocument* doc) override
@@ -18,32 +36,63 @@ public:
 		if (!doc)
 			return false;
 
+		// Detect Key modifiers
+		const auto bCtrl = rh::g_CheckModifierKey(QCTRL);
+		const auto bShift = rh::g_CheckModifierKey(QSHIFT);
+		const auto bAlt = rh::g_CheckModifierKey(QALT);
+
+
 		doc->StartUndo();
 
 		// Create Array that holds all objects to operate on
 		const AutoAlloc<AtomArray> activeObjects;
-		doc->GetActiveObjectsFilter(*activeObjects, false, NOTOK, Oinstance);
+		doc->GetActiveObjects(*activeObjects, GETACTIVEOBJECTFLAGS::CHILDREN);
 
-
-		// No object selected, no function
-		if (activeObjects == nullptr)
+		// empty? quit.
+		if (!activeObjects)
 			return false;
 
 		for (auto i = 0; i < activeObjects->GetCount(); ++i)
 		{
-			auto instance = static_cast<BaseObject*>(activeObjects->GetIndex(i));
-			if (instance == nullptr)
+			auto obj = static_cast<BaseObject*>(activeObjects->GetIndex(i));
+			if (!obj)
 				continue;
 
+			// Make editable magic
+			if (obj->IsInstanceOf(Oinstance))
+			{
+				// Convert a single instance
+				auto convertedInstance = g_MakeInstanceEditable(obj, bCtrl);
+				if (!convertedInstance) // Something went wrong, skip
+					continue;
 
-			const auto instanceUp = instance->GetUp();
-			const auto instancePred = instance->GetPred();
+				// Insert it into the document
+				doc->InsertObject(convertedInstance, obj->GetUp(), obj->GetPred());
+				doc->AddUndo(UNDOTYPE::NEWOBJ, convertedInstance);
 
-			const auto obj = g_ConvertInstance(doc, instance);
-			if (obj == nullptr)
-				return false;
+				// Select the new object
+				doc->AddUndo(UNDOTYPE::BITS, convertedInstance);
+				convertedInstance->SetBit(BIT_ACTIVE);
 
-			doc->InsertObject(obj, instanceUp, instancePred);
+				// Update links - ONLY for shallow conversion. Deep conversion doesn't require TransferGoal()
+				obj->TransferGoal(convertedInstance, false);
+
+				// Copy children
+				if (bShift)
+					rh::g_DeleteChildren(convertedInstance);
+
+				if (!bAlt)
+					g_MoveChildren(obj, convertedInstance);
+
+
+				// Set PSR
+				obj->CopyMatrixTo(convertedInstance);
+
+				// Remove the original instance object to finally replace it with the converted one
+				doc->AddUndo(UNDOTYPE::DELETEOBJ, obj);
+				obj->Remove();
+				BaseObject::Free(obj);
+			}
 		}
 
 		doc->EndUndo();

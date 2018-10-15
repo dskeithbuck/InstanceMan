@@ -1,21 +1,31 @@
 #pragma once
 
 #include "c4d.h"
-#include "constants.h"
 
 class Command_FrameObjects : public CommandData
 {
 INSTANCEOF(Command_FrameObjects,CommandData)
 
 public:
-	static Command_FrameObjects* Alloc()
+	static maxon::Result<Command_FrameObjects*> Alloc()
 	{
-		return NewObjClear(Command_FrameObjects);
+		iferr_scope;
+		return NewObj(Command_FrameObjects) iferr_return;
+	}
+
+	Int32 GetState(BaseDocument* doc) override
+	{
+		// Disable Menu entry if no object is selected
+		const AutoAlloc<AtomArray> arr;
+		doc->GetActiveObjects(arr, GETACTIVEOBJECTFLAGS::NONE);
+		if (!arr || arr->GetCount() == 0)
+			return 0;
+		return CMD_ENABLED;
 	}
 
 	Bool Execute(BaseDocument* doc) override
 	{
-		if (doc == nullptr)
+		if (!doc)
 			return false;
 
 		// Create Array that holds all objects to operate on
@@ -23,7 +33,7 @@ public:
 		doc->GetActiveObjects(activeObjects, GETACTIVEOBJECTFLAGS::SELECTIONORDER | GETACTIVEOBJECTFLAGS::CHILDREN);
 
 		// Allocation failed
-		if (activeObjects == nullptr)
+		if (!activeObjects)
 			return false;
 
 		// GeData container to store individual instance mode
@@ -31,7 +41,7 @@ public:
 		for (auto i = 0; i < activeObjects->GetCount(); ++i)
 		{
 			const auto obj = static_cast<BaseObject*>(activeObjects->GetIndex(i));
-			if(obj->GetType() == Oinstance)
+			if (obj->GetType() == Oinstance)
 			{
 				// Save the current instance mode and set it to normal instances
 				obj->GetParameter(DescID(INSTANCEOBJECT_RENDERINSTANCE_MODE), data, DESCFLAGS_GET::NONE);
@@ -46,7 +56,7 @@ public:
 		for (auto i = 0; i < activeObjects->GetCount(); ++i)
 		{
 			const auto obj = static_cast<BaseObject*>(activeObjects->GetIndex(i));
-			if(obj->GetType() == Oinstance)
+			if (obj->GetType() == Oinstance)
 			{
 				obj->SetParameter(DescID(INSTANCEOBJECT_RENDERINSTANCE_MODE), data.GetInt32(), DESCFLAGS_SET::NONE);
 			}

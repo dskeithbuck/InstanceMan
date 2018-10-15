@@ -2,18 +2,31 @@
 
 #include "c4d.h"
 
-// Sets the reference object of an instance
-inline Bool g_LinkInstance(BaseDocument* doc, BaseObject* instance, BaseObject* refObj)
+#include "constants.h"
+
+/**
+ * @brief Relinks an instance to the given object
+ * @param instance The instance object whose link is about to be updated.
+ * @param refObj The new reference object
+ * @return true if success or false if an error occured
+ */
+inline Bool g_LinkInstance(BaseObject* instance, BaseObject* refObj)
 {
-	if (instance == nullptr || refObj == nullptr)
+	if (!instance || !refObj)
 		return false;
 
 	if (instance->GetType() != Oinstance)
 		return false;
 
+	auto doc = refObj->GetDocument();
+	if (!doc)
+		return false;
+
 	// Create a new baselink, set refObj as reference and pass it to the instance object
 	AutoAlloc<BaseLink> link;
-	if (link == nullptr)
+
+	// Allocation failed
+	if (!link)
 		return false;
 
 	link->SetLink(refObj);
@@ -21,30 +34,47 @@ inline Bool g_LinkInstance(BaseDocument* doc, BaseObject* instance, BaseObject* 
 	data.SetBaseLink(link);
 	doc->AddUndo(UNDOTYPE::CHANGE_SMALL, instance);
 	instance->SetParameter(DescID(INSTANCEOBJECT_LINK), data, DESCFLAGS_SET::NONE);
+	instance->Message(MSG_UPDATE);
 
 	return true;
 }
 
-// Creates a new single instance from a given object
-inline BaseObject* g_CreateInstance(BaseDocument* doc, BaseObject* refObj)
+
+/**
+ * @brief Creates a new single instance from a given object, renames it and selects it. The reference object is deselected.
+ * @param refObj The reference object
+ * @return The instance object or nullptr if something failed
+ */
+inline BaseObject* g_CreateInstance(BaseObject* refObj)
 {
-	if (refObj == nullptr || doc == nullptr)
+	if (!refObj)
 		return nullptr;
 
+	auto doc = refObj->GetDocument();
+	if (!doc)
+		return nullptr;
 
 	// Allocate instance object
 	auto instanceObject = BaseObject::Alloc(Oinstance);
-	if (instanceObject == nullptr)
+	if (!instanceObject)
 		return nullptr;
 
 	doc->AddUndo(UNDOTYPE::NEWOBJ, instanceObject);
+
+	// Get the active instance mode from plugin settings
+	auto instanceMode = 0;
+	const auto bc = GetWorldPluginData(PID_IM);
+	if (bc)
+		instanceMode = bc->GetInt32(INSTANCEMODE, 0);
 
 
 	// Set Name to the same as the reference object
 	doc->AddUndo(UNDOTYPE::CHANGE_SMALL, instanceObject);
 	instanceObject->SetName(refObj->GetName());
+	doc->AddUndo(UNDOTYPE::CHANGE_SMALL, instanceObject);
+	instanceObject->SetParameter(INSTANCEOBJECT_RENDERINSTANCE_MODE, GeData(instanceMode), DESCFLAGS_SET::NONE);
 
-	g_LinkInstance(doc, instanceObject, refObj);
+	g_LinkInstance(instanceObject, refObj);
 
 
 	// Deselect reference object and select new instance object
@@ -56,10 +86,19 @@ inline BaseObject* g_CreateInstance(BaseDocument* doc, BaseObject* refObj)
 	return instanceObject;
 }
 
-// Moves all children of srcObj to tgtObj
-inline void g_MoveChildren(BaseDocument* doc, BaseObject* srcObj, BaseObject* tgtObj)
+
+/**
+ * @brief Moves all children of srcObj to tgtObj. Adds Undos.
+ * @param srcObj The source object
+ * @param tgtObj The target object
+ */
+inline void g_MoveChildren(BaseObject* srcObj, BaseObject* tgtObj)
 {
 	if (!srcObj)
+		return;
+
+	auto doc = srcObj->GetDocument();
+	if (!doc)
 		return;
 
 	auto child = srcObj->GetDown();
@@ -72,18 +111,24 @@ inline void g_MoveChildren(BaseDocument* doc, BaseObject* srcObj, BaseObject* tg
 		child->InsertUnderLast(tgtObj);
 		child = temp;
 	}
-	tgtObj->SetBit(tgtObj->GetBit(BIT_OFOLD));
 }
 
 
-// Simply create a copy from the given instance and put it above
-static void g_CreateInstanceCopy(BaseDocument* doc, BaseObject* obj)
+/**
+ * @brief Simply create a copy from the given instance and put it above
+ * @param obj The instance object to copy
+ */
+inline void g_CreateInstanceCopy(BaseObject* obj)
 {
-	if (obj == nullptr || doc == nullptr)
+	if (!obj)
 		return;
+
+	auto doc = obj->GetDocument();
 
 	// Make a copy of the current instance and prepare it for document insertion
 	const auto copyObj = static_cast<BaseObject*>(obj->GetClone(COPYFLAGS::RECURSIONCHECK, nullptr));
+	if (!copyObj)
+		return;
 
 	// Deselect reference object and select new instance object
 	doc->AddUndo(UNDOTYPE::BITS, obj);
@@ -94,66 +139,70 @@ static void g_CreateInstanceCopy(BaseDocument* doc, BaseObject* obj)
 }
 
 
-// Resolve nested instances and return the true reference object
-inline BaseObject* g_GetInstanceRefDeep(BaseDocument* doc, BaseObject* obj)
+// Get shallow or deeply linked reference objects
+/**
+ * @brief Retrieve the direct or root linked object of an instance. Also works with nested instances
+ * @param obj the instance object
+ * @param deep if true, the root object of nested instances is returned
+ * @return the reference or root object. Can return nullptr.
+ */
+inline BaseObject* g_GetInstanceRef(BaseObject* obj, const Bool deep = false)
 {
-	if (obj == nullptr)
+	if (!obj->IsInstanceOf(Oinstance))
 		return nullptr;
 
-	if (obj->GetType() != Oinstance)
-		return obj;
-
+	// Retrieve Link from instance
 	GeData data;
-
 	if (!obj->GetParameter(DescID(INSTANCEOBJECT_LINK), data, DESCFLAGS_GET::NONE))
-		return obj;
+		return nullptr;
 
-	const auto linkedEntity = static_cast<BaseObject*>(data.GetLinkAtom(doc, Obase));
+	// The document needs to be provided for GetLinkAtom()
+	const auto doc = obj->GetDocument();
+	if (!doc)
+		return nullptr;
 
-	if (linkedEntity)
+	// Get the Atom
+	auto linkedEntity = static_cast<BaseObject*>(data.GetLinkAtom(doc, Obase));
+
+	// Get down to the reference object if root object is requested
+	while (deep && linkedEntity->IsInstanceOf(Oinstance))
 	{
-		if (linkedEntity->IsInstanceOf(Oinstance))
-			return g_GetInstanceRefDeep(doc, linkedEntity);
+		if (!linkedEntity->GetParameter(DescID(INSTANCEOBJECT_LINK), data, DESCFLAGS_GET::NONE))
+			return nullptr;
 
-		return linkedEntity;
+		linkedEntity = static_cast<BaseObject*>(data.GetLinkAtom(doc, Obase));
 	}
-
-	return nullptr;
-}
-
-
-// Gets the reference linked in the given instance object
-inline BaseObject* g_GetInstanceRefShallow(BaseDocument* doc, BaseObject* obj)
-{
-	if (obj == nullptr)
-		return nullptr;
-
-	GeData data;
-	if (!obj->GetParameter(DescID(INSTANCEOBJECT_LINK), data, DESCFLAGS_GET::NONE))
-		return nullptr;
-
-	const auto linkedEntity = static_cast<BaseObject*>(data.GetLinkAtom(doc, Obase));
 
 	return linkedEntity;
 }
 
 
-// If multiple objects selected, use last selected as reference
-static void g_CreateInstancesFromSelection(BaseDocument* doc, BaseObject* refObj, BaseObject* obj)
+/**
+ * @brief Converts an object to an instance and links it with the given reference object.
+ * @param doc The target document.
+ * @param refObj The reference object to link to the newly created instances.
+ * @param obj The object that is about to be converted to an instance.
+ */
+inline void g_CreateInstancesFromSelection(BaseDocument* doc, BaseObject* refObj, BaseObject* obj)
 {
-	if (obj == nullptr || doc == nullptr || refObj == nullptr)
+	if (!obj || !doc || !refObj)
 		return;
 
-
-	const auto instance = g_CreateInstance(doc, refObj);
+	// Create a single instance
+	const auto instance = g_CreateInstance(refObj);
 	if (!instance)
 		return;
 
-	// TODO: Check if this works correctly
+	// Set Bits
+	instance->SetAllBits(obj->GetAllBits());
+
+	// Copy matrix
 	obj->CopyMatrixTo(instance);
 
+	// Put it into document
 	doc->InsertObject(instance, obj->GetUp(), obj->GetPred());
-	g_MoveChildren(doc, obj, instance);
+	g_MoveChildren(obj, instance);
+
 
 	// Remove the current object, since we want to swap the object with the instance
 	// Move children beforehand!
@@ -163,47 +212,32 @@ static void g_CreateInstancesFromSelection(BaseDocument* doc, BaseObject* refObj
 }
 
 
-// Create a new instance linked to the given object
-static void g_CreateInstanceFromSingle(BaseDocument* doc, BaseObject* refObj)
+/**
+ * @brief Replaces Cinema 4D's "Make editable" command that makes it possible to also convert instances of whatever type they are.
+ * @param obj The object that shall be converted
+ * @param deep if true, the root reference object is used instead of a directly linked instance
+ * @return the converted object or nullptr if the operation fails
+ */
+inline BaseObject* g_MakeInstanceEditable(BaseObject* obj, const bool deep = false)
 {
-	if (refObj == nullptr || doc == nullptr)
-		return;
-
-	const auto instance = g_CreateInstance(doc, refObj);
-	if (!instance)
-		return;
-
-	// Copy matrix
-	refObj->CopyMatrixTo(instance);
-
-	doc->InsertObject(instance, refObj->GetUp(), refObj->GetPred());
-}
-
-// Makes an instance editable, no matter of what type it is - works with render- and multiinstance
-// Adds Undos!
-inline BaseObject* g_ConvertInstance(BaseDocument* doc, BaseObject* obj)
-{
-	if (obj == nullptr)
+	if (!obj)
 		return nullptr;
 
-	// Set to normal instance mode, otherwise "make editable" will fail
-	if (obj->GetType() == Oinstance)
+	const auto doc = obj->GetDocument();
+	if (!doc)
+		return nullptr;
+
+	auto refObj = obj;
+	doc->AddUndo(UNDOTYPE::CHANGE, refObj);
+	if (obj->IsInstanceOf(Oinstance))
 	{
-		doc->AddUndo(UNDOTYPE::CHANGE_SMALL, obj);
-		obj->SetParameter(DescID(INSTANCEOBJECT_RENDERINSTANCE_MODE), GeData(INSTANCEOBJECT_RENDERINSTANCE_MODE_NONE), DESCFLAGS_SET::NONE);
+		// Retrieve the linked or root object
+		// obj is instance and root is requested, so simply return a copy of the root object
+		refObj = g_GetInstanceRef(obj, deep);
+		if (!refObj)
+			return nullptr;
+
+		return static_cast<BaseObject*>(refObj->GetClone(COPYFLAGS::NONE, nullptr));
 	}
-
-
-	// Make editable
-	ModelingCommandData mcd;
-	mcd.doc = doc;
-	mcd.op = obj;
-	doc->AddUndo(UNDOTYPE::DELETEOBJ, obj);
-	if (!SendModelingCommand(MCOMMAND_MAKEEDITABLE, mcd))
-		return nullptr;
-
-	const auto res = static_cast<BaseObject*>(mcd.result->GetIndex(0));
-
-	doc->AddUndo(UNDOTYPE::NEWOBJ, res);
-	return res;
+	return nullptr;
 }

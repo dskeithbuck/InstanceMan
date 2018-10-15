@@ -1,19 +1,29 @@
 #pragma once
 
 #include "c4d.h"
+
 #include "instance_functions.h"
-#include "InputDialog.h"
 
 class Command_Split : public CommandData
 {
 INSTANCEOF(Command_Split, CommandData)
 
 public:
-	static Command_Split* Alloc()
+	static maxon::Result<Command_Split*> Alloc()
 	{
-		return NewObjClear(Command_Split);
+		iferr_scope;
+		return NewObj(Command_Split) iferr_return;
 	}
 
+	Int32 GetState(BaseDocument* doc) override
+	{
+		// Disable Menu entry if not at least 2 objects are selected selected
+		const AutoAlloc<AtomArray> arr;
+		doc->GetActiveObjects(arr, GETACTIVEOBJECTFLAGS::CHILDREN);
+		if (!arr || arr->GetCount() < 2)
+			return 0;
+		return CMD_ENABLED;
+	}
 
 	Bool Execute(BaseDocument* doc) override
 	{
@@ -28,7 +38,7 @@ public:
 		doc->GetActiveObjects(activeObjects, GETACTIVEOBJECTFLAGS::SELECTIONORDER | GETACTIVEOBJECTFLAGS::CHILDREN);
 
 		// Allocation failed
-		if (activeObjects == nullptr)
+		if (!activeObjects)
 			return false;
 
 		// Minimum of 2 objects have to be selected
@@ -47,7 +57,7 @@ public:
 		// Convert the lastly selected instance to the new reference object
 		auto lastObject = static_cast<BaseObject*>(activeObjects->GetIndex(activeObjects->GetCount() - 1));
 		activeObjects->Remove(lastObject);
-		if(activeObjects->GetCount() == 0)
+		if (activeObjects->GetCount() == 0)
 			return false;
 
 		if (!lastObject)
@@ -59,39 +69,39 @@ public:
 		// Popup InputDialog to enter a new name
 		if (bCtrl)
 		{
-			const auto res = _dlg.Open(-1, -1, 400, 0, true);
-			if (!res)
+			if (!RenameDialog(&newName))
 				return false;
-
-			newName = _dlg.GetName();
 		}
 
-		const auto parent = lastObject->GetUp();
-		const auto pred = lastObject->GetPred();
-		const auto refObj = g_ConvertInstance(doc, lastObject);
+		const auto refObj = g_MakeInstanceEditable(lastObject);
 
 		if (!refObj)
 			return false;
 
+		// Set Name
 		refObj->SetName(newName.IsEmpty() ? refObj->GetName() : newName);
-		doc->InsertObject(refObj, parent, pred);
 
+		// Insert converted object (the new reference) into the document
+		doc->InsertObject(refObj, lastObject->GetUp(), lastObject->GetPred());
+		doc->AddUndo(UNDOTYPE::NEWOBJ, refObj);
+
+		// Relink instances
 		for (auto i = 0; i < activeObjects->GetCount(); ++i)
 		{
 			const auto obj = static_cast<BaseObject*>(activeObjects->GetIndex(i));
 
 			// Update instance links
-			g_LinkInstance(doc, obj, refObj);
+			g_LinkInstance(obj, refObj);
 			obj->SetName(refObj->GetName());
 		}
+
+		doc->AddUndo(UNDOTYPE::DELETEOBJ, lastObject);
+		lastObject->Remove();
+		BaseObject::Free(lastObject);
 
 		doc->EndUndo();
 
 		EventAdd();
 		return true;
 	}
-
-
-private:
-	InputDialog _dlg;
 };

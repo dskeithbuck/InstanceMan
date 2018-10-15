@@ -1,90 +1,169 @@
 #pragma once
 
 #include "c4d.h"
+
 #include "instance_functions.h"
-#include "lib_browser.h"
+#include "c4d_helpers.h"
 
 class Command_Swap : public CommandData
 {
 INSTANCEOF(Command_FrameObjects,CommandData)
 
 public:
-	static Command_Swap* Alloc()
+	static maxon::Result<Command_Swap*> Alloc()
 	{
-		return NewObjClear(Command_Swap);
+		iferr_scope;
+		return NewObj(Command_Swap) iferr_return;
 	}
 
+	Int32 GetState(BaseDocument* doc) override
+	{
+		// Disable Menu entry if no valid object is selected
+		const auto obj = doc->GetActiveObject();
+		doc->GetActiveObject();
+		if (!obj)
+			return 0;
+
+		if (obj->IsInstanceOf(Oinstance))
+			return CMD_ENABLED;
+
+		auto bc = obj->GetDataInstance();
+		if (bc)
+		{
+			const auto dataBc = bc->GetContainerInstance(PID_IM);
+			if (dataBc)
+			{
+				const auto link = dataBc->GetObjectLink(0, doc);
+				if (link) return CMD_ENABLED;
+			}
+		}
+		return 0;
+	}
 
 	Bool Execute(BaseDocument* doc) override
 	{
-		if (doc == nullptr)
+		if (!doc)
 			return false;
 
 		doc->StartUndo();
 
 		// Operate on a single object
-		auto instance = doc->GetActiveObject();
+		auto obj = doc->GetActiveObject();
 
 		// No object present
-		if (instance == nullptr)
+		if (!obj)
 			return false;
 
-		if (instance->GetType() != Oinstance)
-			return false;
+		auto swapTarget = g_GetInstanceRef(obj);
 
-		auto refObj = g_GetInstanceRefDeep(doc, instance);
-		if (refObj == nullptr)
-			return false;
-
-		const auto instanceUp = instance->GetUp();
-		const auto instancePred = instance->GetPred();
-		const auto instanceMatrix = instance->GetMl();
-		const auto refMatrix = refObj->GetMl();
-
-
-		// Move the instance object to the reference object's place
-		if (instance->GetDown() != refObj && instanceUp != refObj) // Abort when one of both objects is child or parent of the other one
+		// Swap target is an instance object
+		// Check if the object has already been swapped and evaluate the object to swap with
+		if (!obj->IsInstanceOf(Oinstance))
 		{
-			doc->AddUndo(UNDOTYPE::DELETEOBJ, instance);
-			instance->Remove();
-
-			// Copy Matrix
-
-
-			doc->AddUndo(UNDOTYPE::CHANGE, instance);
-			instance->SetMl(refMatrix);
-
-			doc->AddUndo(UNDOTYPE::CHANGE, refObj);
-			refObj->SetMl(instanceMatrix);
-
-			doc->InsertObject(instance, refObj->GetUp(), refObj->GetPred());
-
-			instance->Message(MSG_UPDATE);
-			refObj->Message(MSG_UPDATE);
-		}
-
-		// 
-		if (refObj->GetDown() != instance && refObj->GetUp() != instance) // Abort when one of both objects is child or parent of the other one
-		{
-			if (instancePred != refObj) // Skip if the constellation has just been changed so both objects are next to each other
+			auto bc = obj->GetDataInstance();
+			if (bc)
 			{
-				doc->AddUndo(UNDOTYPE::DELETEOBJ, refObj);
-				refObj->Remove();
-
-				// Copy Matrix
-
-				doc->AddUndo(UNDOTYPE::CHANGE, instance);
-				instance->SetMl(refMatrix);
-
-				doc->AddUndo(UNDOTYPE::CHANGE, refObj);
-				refObj->SetMl(instanceMatrix);
-
-				doc->InsertObject(refObj, instanceUp, instancePred);
-
-				refObj->Message(MSG_UPDATE);
-				instance->Message(MSG_UPDATE);
+				const auto dataBc = bc->GetContainerInstance(PID_IM);
+				if (dataBc)
+					swapTarget = dataBc->GetObjectLink(0, doc);
 			}
 		}
+
+		if (!swapTarget)
+			return false;
+
+		// Temporarily save insertion points and matrices as objects get removed in the process
+		const auto objUp = obj->GetUp();
+		const auto objPred = obj->GetPred();
+		const auto objMatrix = obj->GetMl();
+
+		// Check ift Ctrl is pressed
+		const auto bCtrl = rh::g_CheckModifierKey(QCTRL);
+
+		// Store the instance hierarchy if Ctrl is pressed
+		const AutoAlloc<AtomArray> refObjChildren;
+		if (bCtrl)
+			rh::g_GetChildren(swapTarget, refObjChildren);
+
+		// Using a clone so we do not have to care about insertion point validation
+		// Clone has no hierarchy as it is saved for swapping
+		const auto swapTargetClone = static_cast<BaseObject*>(swapTarget->GetClone(bCtrl ? COPYFLAGS::NO_HIERARCHY : COPYFLAGS::NONE, nullptr));
+
+
+		// Swap children
+		// Move the instance's children directly to the clone of refObj, since it has noc hierarchy anymore
+
+		if (bCtrl)
+		{
+			g_MoveChildren(obj, swapTargetClone);
+
+			// Now move the refObject's children to the instance
+			for (auto i = 0; i < refObjChildren->GetCount(); ++i)
+			{
+				auto child = static_cast<BaseObject*>(refObjChildren->GetIndex(i));
+				if (!child)
+					continue;
+
+				doc->AddUndo(UNDOTYPE::DELETEOBJ, child);
+				child->Remove();
+				child->InsertUnderLast(obj);
+			}
+		}
+
+
+		// Remove instance from the objects list
+		doc->AddUndo(UNDOTYPE::DELETEOBJ, obj);
+		obj->Remove();
+
+		// Set the instance matrix to the one of refObj, so everything is at the same place
+		doc->AddUndo(UNDOTYPE::CHANGE, obj);
+		obj->SetMl(swapTargetClone->GetMl());
+
+		// Set the refObj matrix to the one of the instance, matrix swap is complete
+		doc->AddUndo(UNDOTYPE::CHANGE, swapTarget);
+		swapTargetClone->SetMl(objMatrix);
+
+		// Insert it to the refObj's position
+		doc->InsertObject(obj, swapTarget->GetUp(), swapTarget->GetPred());
+
+		// Add a link to the swapped object
+		if (obj->IsInstanceOf(Oinstance))
+		{
+			auto targetBc = swapTargetClone->GetDataInstance();
+			BaseContainer dataBc;
+			if (targetBc)
+			{
+				dataBc.SetLink(0, obj);
+				targetBc->SetContainer(PID_IM, dataBc);
+			}
+		}
+			// Remove link when swapping back
+		else
+		{
+			auto targetBc = obj->GetDataInstance();
+			BaseContainer dataBc;
+			if (targetBc)
+			{
+				dataBc.SetLink(0, nullptr);
+				targetBc->SetContainer(PID_IM, dataBc);
+			}
+		}
+		// Now insert the refObject at the instance's old position
+		doc->InsertObject(swapTargetClone, objUp, objPred);
+
+		// Update all links
+		swapTarget->TransferGoal(swapTargetClone, false);
+
+		// Set all states
+		swapTargetClone->SetAllBits(swapTarget->GetAllBits());
+
+		// Set selections
+		obj->ToggleBit(BIT_ACTIVE);
+		swapTargetClone->ToggleBit(BIT_ACTIVE);
+
+		// Finally delete the object
+		swapTarget->Remove();
+		BaseObject::Free(swapTarget);
 
 		doc->EndUndo();
 
