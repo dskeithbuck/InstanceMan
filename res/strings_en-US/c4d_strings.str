@@ -12,13 +12,14 @@ STRINGTABLE
 	IDS_PNAME_IM_RENAME "#$03Rename";
 	IDS_PHELP_IM_RENAME "Renames all selected instances according to their reference object.\u000a\u200b
 	\u000aCTRL: Also renames nested instances.";
+	\u000aSHIFT: Enumerates the selected instances.";
 
 	IDS_PNAME_IM_SPLIT "#$04Split";
 	IDS_PHELP_IM_SPLIT "Relinks selected instances. The last selected instance is converted to a new reference object.\u000a\u200b
 	\u000aCTRL: Pops up a dialog to rename the new reference object.";
 
 	IDS_PNAME_IM_MAKEEDITABLE "#$05Make instance editable";
-	IDS_PHELP_IM_MAKEEDITABLE "Extends Cinema 4Ds \u201cMake editable\u201d. Converts Render- and multi-instances.\u000a\u200b
+	IDS_PHELP_IM_MAKEEDITABLE "Extends Cinema 4Ds \u201cMake editable\u201d. Converts render- and multi-instances.\u000a\u200b
 	\u000aCTRL: Converts nested instances directly to the root object.
 	\u000aSHIFT: Removes children of the instance.
 	\u000aALT: Don't inherit children of the reference object.";
@@ -35,7 +36,7 @@ STRINGTABLE
 
 	IDS_PNAME_IM "#$10Settings";
 	IDS_PHELP_IM "Open InstanceMan settings";
-	
+
 	IDS_SETTINGSDIALOG_TITLE "InstanceMan Settings";
-	IDS_LBL_INSTANCEMODE "Default Instance mode";	
+	IDS_LBL_INSTANCEMODE "Default Instance mode";
 }
