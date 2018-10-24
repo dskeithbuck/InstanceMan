@@ -11,7 +11,7 @@ STRINGTABLE
 
 	IDS_PNAME_IM_RENAME "#$03Rename";
 	IDS_PHELP_IM_RENAME "Renames all selected instances according to their reference object.\u000a\u200b
-	\u000aCTRL: Also renames nested instances.";
+	\u000aCTRL: Also renames nested instances.
 	\u000aSHIFT: Enumerates the selected instances.";
 
 	IDS_PNAME_IM_SPLIT "#$04Split";
