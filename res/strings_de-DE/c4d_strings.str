@@ -7,7 +7,8 @@ STRINGTABLE
 
 	IDS_PNAME_IM_CREATE "#$02Erstellen";
 	IDS_PHELP_IM_CREATE "Erstellt neue Instanzen oder kopiert existierende.\u000a\u200b
-	\u000aSTRG: Konvertiert die selektierten Objekte und setzt das zuletzt ausgewählte Objekt als Referenz.";
+	\u000aSTRG: Konvertiert die selektierten Objekte und setzt das zuletzt ausgewählte Objekt als Referenz.
+	\u000aSHIFT: Verschiebt alle Unterobjekte in das neue Referenzobjekt.";
 
 	IDS_PNAME_IM_RENAME "#$03Umbenennen";
 	IDS_PHELP_IM_RENAME "Benennt alle Instanzen nach dem Referenzobjekt um.\u000a\u200b

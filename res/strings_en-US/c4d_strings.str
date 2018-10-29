@@ -7,7 +7,8 @@ STRINGTABLE
 
 	IDS_PNAME_IM_CREATE "#$02Create";
 	IDS_PHELP_IM_CREATE "Creates new instances or copies existing ones.\u000a\u200b
-	\u000aCTRL: Converts current object selection to instances and sets the last selected object as reference.";
+	\u000aCTRL: Converts current object selection to instances and sets the last selected object as reference.
+	\u000aSHIFT: Moves all children into the new reference object.";
 
 	IDS_PNAME_IM_RENAME "#$03Rename";
 	IDS_PHELP_IM_RENAME "Renames all selected instances according to their reference object.\u000a\u200b
