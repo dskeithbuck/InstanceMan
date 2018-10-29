@@ -2,7 +2,7 @@
 
 #include "c4d.h"
 
-#include "c4d_helpers.h"
+#include "c4d_helpers_r20.h"
 #include "instance_functions.h"
 
 

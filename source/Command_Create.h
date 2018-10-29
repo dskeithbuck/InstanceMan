@@ -46,6 +46,7 @@ public:
 
 		// Detect Key modifiers
 		const auto bCtrl = rh::g_CheckModifierKey(QCTRL);
+		const auto bAlt = rh::g_CheckModifierKey(QALT);
 
 		// Iterate through all selected objects
 		const auto count = activeObjects->GetCount();
@@ -65,7 +66,11 @@ public:
 			{
 				const auto refObj = static_cast<BaseObject*>(activeObjects->GetIndex(count - 1));
 				if (obj != refObj && !refObj->IsInstanceOf(Oinstance))
+				{
+					if (bAlt)
+						g_MoveChildren(obj, refObj);
 					g_CreateInstancesFromSelection(doc, refObj, obj);
+				}
 			}
 
 			// Normal operation if no modifier is pressed
