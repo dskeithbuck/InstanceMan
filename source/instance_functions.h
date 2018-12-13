@@ -183,7 +183,7 @@ inline BaseObject* g_GetInstanceRef(BaseObject* obj, const Bool deep = false)
  * @param refObj The reference object to link to the newly created instances.
  * @param obj The object that is about to be converted to an instance.
  */
-inline void g_CreateInstancesFromSelection(BaseDocument* doc, BaseObject* refObj, BaseObject* obj)
+inline void g_CreateInstancesFromSelection(BaseDocument* doc, BaseObject* refObj, BaseObject* obj, Bool moveChildren=true)
 {
 	if (!obj || !doc || !refObj)
 		return;
@@ -201,7 +201,8 @@ inline void g_CreateInstancesFromSelection(BaseDocument* doc, BaseObject* refObj
 
 	// Put it into document
 	doc->InsertObject(instance, obj->GetUp(), obj->GetPred());
-	g_MoveChildren(obj, instance);
+	if(moveChildren)
+		g_MoveChildren(obj, instance);
 
 
 	// Remove the current object, since we want to swap the object with the instance

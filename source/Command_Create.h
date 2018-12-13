@@ -47,6 +47,7 @@ public:
 		// Detect Key modifiers
 		const auto bCtrl = rh::g_CheckModifierKey(QCTRL);
 		const auto bShift = rh::g_CheckModifierKey(QSHIFT);
+		const auto bAlt = rh::g_CheckModifierKey(QALT);
 
 		// Iterate through all selected objects
 		const auto count = activeObjects->GetCount();
@@ -69,7 +70,7 @@ public:
 				{
 					if (bShift)
 						g_MoveChildren(obj, refObj);
-					g_CreateInstancesFromSelection(doc, refObj, obj);
+					g_CreateInstancesFromSelection(doc, refObj, obj, bAlt);
 				}
 			}
 
