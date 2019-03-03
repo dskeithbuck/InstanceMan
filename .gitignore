@@ -43,6 +43,5 @@
 *.ph
 # *.hxx
 
-project
 generated
 *.xlib
